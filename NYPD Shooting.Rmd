@@ -1,0 +1,115 @@
+---
+title: "NYPD Shooting"
+author: "W. Fang"
+date: "2024-05-21"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##
+
+For this project an analysis will be made on NYPD shooting incident rates in New York City based on the dataset “NYPD Shooting Incident Data (Historic)”. First we will load the appropriate libraries for analysis which are dplyr, tidyverse, ggplot2, and ggpubr.Then we will import the dataset and take a first glimpse of what the dataset looks like before any cleaning or sorting is done. 
+
+
+
+```{r loadingdata}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(ggpubr)
+library(tidyr)
+Nypd_Data <- read.csv("https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv")
+glimpse(Nypd_Data)
+
+```
+### Cleaning the data
+The interesting variables in this dataset are OCCUR_DATE, BORO, STATISTICAL_MURDER_FLAG, PERP_SEX, PERP_RACE.
+We will create a new dataframe with only those variables and drop the rows with incomplete information. We will also rename those variables and mutate the date variable into a date datatype. We will then also sort by the date, showing the oldest date first.
+
+```{r cleaningdata}
+Nypd_Data <- 
+Nypd_Data %>% 
+drop_na(c(OCCUR_DATE,BORO,STATISTICAL_MURDER_FLAG,PERP_SEX,PERP_RACE)) %>%
+select(c(OCCUR_DATE,BORO,STATISTICAL_MURDER_FLAG,PERP_SEX,PERP_RACE)) %>%
+rename(Dates = OCCUR_DATE,Murderflag = STATISTICAL_MURDER_FLAG,Sex = PERP_SEX, Race = PERP_RACE, Borough = BORO) %>%
+mutate(Dates =mdy(Dates)) %>%
+arrange(Dates)
+head(Nypd_Data)
+
+```
+
+
+### Trends over the years
+
+The data indicates that each entry is an incident, and this interests me to analyze the annual incident rates and trends across the five boroughs.
+
+```{r borographs}
+Nypd_Data %>%
+drop_na %>%
+filter(Borough %in% c("BRONX","BROOKLYN","MANHATTAN","QUEENS","STATEN ISLAND")) %>%
+group_by(year = year(Dates)) %>%
+mutate(Murderflag = as.logical(Murderflag)) %>%
+mutate(counts = sum(Murderflag)) %>%
+ggplot(aes(Dates,counts,color = Borough)) +
+geom_point(alpha =.3,size =.1)+
+scale_x_continuous(breaks=seq(2006,2023,by=1))+
+geom_smooth()+
+facet_wrap(~Borough)+
+theme_linedraw()+
+labs(title = "Number of Incidents per Year" )
+```
+
+### Incidents by Borough
+
+The previous graph reveals that all the Boroughs have very similar trends, If one borough experiences a peak or drop, the rest will also experience the same. A bar chart will show which boroughs have the highest number of incidents.
+
+```{r barplot}
+Borocount <- Nypd_Data %>%
+count(Borough, sort = TRUE, name = "total_incidents")
+#head(Borocount)
+ggplot(data = Borocount, aes(x=Borough, y= total_incidents)) +
+geom_col(fill= "steelblue",alpha =.7) +
+theme_bw() +
+labs(title = "Incidents by Borough", y= "Total number of Incidents")
+
+```
+
+### Prediction of Future shootings
+The bar chart indicates that Brooklyn has consistently recorded the most incidents since the dataset’s inception, and considering the consistent pattern among boroughs, I plan to create a predictive model for Brooklyn’s incident trends.
+
+
+```{r model,fig.width=10,fig.height=5}
+Brooklyncounts <- Nypd_Data %>%
+group_by(year = year(Dates)) %>%
+filter(Borough == "BROOKLYN") %>%
+mutate(Murderflag = as.logical(Murderflag)) %>%
+mutate(counts = sum(Murderflag))
+modelb <- lm(counts~year,data=Brooklyncounts)
+Brooklyncounts$residuals <-modelb$residuals
+Brooklyncounts$predicted <-modelb$fitted.values
+futurebrooklyncounts <-data.frame(year=seq(max(Brooklyncounts$year)+1, by =1, length.out=5))
+futurebrooklyncounts$predictions<-
+predict(modelb,data.frame(year=c(2024,2025,2026,2027,2028)))
+ggplot(modelb,aes(year,counts))+
+geom_point()+
+geom_line()+
+geom_smooth(method="lm",se=FALSE)+
+stat_cor(method="pearson",label.x=2010,label.y=140)+
+labs(title = "Incidents by Year", x= "Year", y= "Incidents")+
+scale_x_continuous(limits=c(2006,2028),breaks=scales::breaks_width(1))+
+theme_bw()+
+geom_point(data=futurebrooklyncounts,aes(x=year,y=predictions),color="red")
+
+```
+
+### Conclusion and Biases
+The projection model indicates a decline in shooting rates in the coming years. Since 2006, there has been a gradual decrease in shootings. However, it’s crucial to acknowledge potential biases in the data and analysis. Critics might suggest that factors beyond the boroughs could affect incident numbers, and not all variables were accounted for in the analysis.Another bias is I personally live in New York City, and I know the borough of Bronx is regarded as the most dangerous. However, I chose to make a prediction model based on which borough has the most incidents, and this may have mitigated some bias.Additionally, data collection methods and the classification of shootings may have evolved, possibly affecting the reporting of incidents.
+```
+{r}
+sessioninfo()
+```
